@@ -1,0 +1,367 @@
+package Collect;
+
+import java.io.PrintWriter;
+import java_cup.runtime.*;
+import Absyn.*;
+
+action code {:
+:}
+
+parser code {:
+	public static void main(String args[]) throws Exception {
+		new parser(new Yylex(System.in)).parse();
+	}
+:}
+
+/* Parenthesis and Brackets. */
+terminal LPAREN, RPAREN, LBRACKET, RBRACKET, LSQBRACKET, RSQBRACKET;
+
+/* Operators and Assigner. */
+terminal PLUS, MINUS, TIMES, DIVIDE, ASSIGN, UNOP;
+
+/* Comparer. */
+terminal LESS, GREATER, LESS_EQ, GREATER_EQ, EQ, NOT_EQ;
+
+/* Tokens. */
+terminal TOKEN_INT, TOKEN_FLOAT, TOKEN_RETURN;
+
+/* Identifier. */
+terminal String ID;
+
+/* Types. */
+terminal Float		FLOAT_NUM;
+terminal Integer	INT_NUM;
+
+/* Miscellaneous. */
+terminal SEMI, COLON, COMMA;
+
+/* Non-terminal program rules. */
+non terminal Absyn			absyn;
+non terminal Program		program;
+non terminal DeclList		declList;
+non terminal FuncList		funcList;
+non terminal Declaration	declaration;
+non terminal IdentList		identList;
+non terminal Identifier		identifier;
+non terminal FunctionDec	function;
+non terminal ParamList		paramList;
+non terminal Type			type;
+non terminal StmtList		stmtList;
+non terminal Expr			expr;
+non terminal ArgList		argList;
+
+/* Non-terminal statement definition. */
+non terminal Stmt			stmt, openStmt, closedStmt;
+
+
+/* Non-terminal of CLOSED statement and its element. */
+non terminal CompoundStmt	compoundStmt;
+non terminal AssignStmt		assignStmt;
+non terminal Assign			assign;
+non terminal CallStmt		callStmt;
+non terminal Call			call;
+non terminal RetStmt		retStmt;
+
+precedence left LPAREN, RPAREN;
+precedence right UNOP;
+precedence left TIMES, DIVIDE;
+precedence left PLUS, MINUS;
+precedence left LESS, GREATER, LESS_EQ, GREATER_EQ;
+precedence left EQ, NOT_EQ;
+precedence right ASSIGN;
+
+
+/* Program grammars. */
+
+absyn ::= program:p
+		  {:
+		  
+			  if (Absyn.optionPrintAST) {
+				  // Print out AST at given file name.
+				  Absyn.printWriter = new PrintWriter(Absyn.astOutputName, Absyn.encoding);
+				  p.printAST();
+				  Absyn.printWriter.close();
+			  }
+
+			  if (Absyn.optionPrintSymTable) {
+				  // Print out synmbol table at given file name.
+				  Absyn.printWriter = new PrintWriter(Absyn.symTableOutputName, Absyn.encoding);
+				  Absyn.scopeStack.add("GLOBAL");
+				  p.printSymTable();
+				  Absyn.printWriter.close();
+			  }
+		  :}
+		;
+
+program	::=
+			{:
+				RESULT = new Program(null, null);
+			:}
+		  | declList:d
+			{:
+				RESULT = new Program(d, null);
+			:}
+		  | funcList:f
+			{:
+				RESULT = new Program(null, f);
+			:}
+		  | declList:d funcList:f
+			{:
+				RESULT = new Program(d, f);
+			:}
+		  ;
+
+declList ::= declaration:d
+			 {:
+				 RESULT = new DeclList(d);
+			 :}
+		   | declList:dl declaration:d
+			 {:
+				 dl.add(d);
+				 RESULT = dl;
+			 :}
+		   ;
+
+funcList ::= function:f
+			 {:
+				 RESULT = new FuncList(f);
+			 :}
+		   | funcList:fl function:f
+			 {:
+				 fl.add(f);
+				 RESULT = fl;
+			 :}
+		   ;
+
+declaration ::= type:t identList:i SEMI
+				{:
+					RESULT = new Declaration(t, i);
+				:}
+			  ;
+
+identList ::= identifier:i
+			  {:
+				  RESULT = new IdentList(i);
+			  :}
+			| identList:il COMMA identifier:i
+			  {:
+				  il.add(i);
+				  RESULT = il;
+			  :}
+			;
+
+identifier ::= ID:i
+			   {:
+				   RESULT = new Identifier(i);
+			   :}
+			 | ID:i LSQBRACKET INT_NUM:n RSQBRACKET
+			   {:
+				   RESULT = new Identifier(i, n);
+			   :}
+			 ;
+
+function ::= type:t ID:i LPAREN RPAREN compoundStmt:c
+			 {:
+				 RESULT = new FunctionDec(t, i, null, c);
+			 :}
+		   | type:t ID:i LPAREN paramList:p RPAREN compoundStmt:c
+			 {:
+				 RESULT = new FunctionDec(t, i, p, c);
+			 :}
+		   ;
+
+paramList ::= type:t identifier:i
+			  {:
+				  Param p = new Param(t, i);
+				  RESULT = new ParamList(p);
+			  :}
+			| paramList:pl COMMA type:t identifier:i
+			  {:
+				  Param p = new Param(t, i);
+				  pl.add(p);
+				  RESULT = pl;
+			  :}
+			;
+
+type ::= TOKEN_INT
+		 {:
+			 RESULT = new Type(TypeName.INT);
+		 :}
+	   | TOKEN_FLOAT
+		 {:
+			 RESULT = new Type(TypeName.FLOAT);
+		 :}
+	   ;
+
+compoundStmt ::= LBRACKET stmtList:sl RBRACKET
+				 {:
+					 RESULT = new CompoundStmt(null, sl);
+				 :}
+			   | LBRACKET declList:dl stmtList:sl RBRACKET
+				 {:
+					 RESULT = new CompoundStmt(dl, sl);
+				 :}
+			   ;
+
+stmtList ::=
+			 {:
+				 RESULT = new StmtList(null);
+			 :}
+		   | stmtList:sl stmt:s
+			 {:
+				 sl.add(s);
+				 RESULT = sl;
+			 :}
+		   ;
+
+stmt ::= closedStmt:s
+		 {:
+			 RESULT = s;
+		 :}
+	   ;
+	   
+closedStmt ::= compoundStmt:s
+			   {:
+				   RESULT = s;
+			   :}
+			 | assignStmt:s
+			   {:
+				   RESULT = s;
+			   :}
+			 | callStmt:s
+			   {:
+				   RESULT = s;
+			   :}
+			 | retStmt:s
+			   {:
+				   RESULT = s;
+			   :}
+			 |  SEMI
+			   {:
+				   RESULT = new EmptyStmt();
+			   :}
+			 ;
+
+
+assignStmt ::= assign:a SEMI
+			   {:
+				   RESULT = new AssignStmt(a);
+			   :}
+			 ;
+
+assign ::= ID:id ASSIGN expr:e
+		   {:
+			   RESULT = new Assign(id, null, e);
+		   :}
+		 | ID:id LSQBRACKET expr:idx RSQBRACKET ASSIGN expr:e
+		   {:
+			   RESULT = new Assign(id, idx, e);
+		   :}
+		 ;
+
+callStmt ::= call:c SEMI
+			 {:
+				 RESULT = new CallStmt(c);
+			 :}
+		   ;
+
+call ::= ID:id LPAREN RPAREN
+		 {:
+			 RESULT = new Call(id, null);
+		 :}
+	   | ID:id LPAREN argList:args RPAREN
+		 {:
+			 RESULT = new Call(id, args);
+		 :}
+       ;
+
+retStmt ::= TOKEN_RETURN SEMI
+			{:
+				RESULT = new RetStmt(null);
+			:}
+		  | TOKEN_RETURN expr:e SEMI
+			{:
+				RESULT = new RetStmt(e);
+			:}
+		  ;
+
+expr ::= MINUS expr:e
+		 {:
+			 RESULT = new UnaryExpr(e);
+		 :} %prec UNOP
+	   | expr:lhs TIMES expr:rhs
+		 {:
+			 RESULT = new BinaryExpr(lhs, BinaryOperator.TIMES, rhs);
+		 :}
+	   | expr:lhs DIVIDE expr:rhs
+		 {:
+			 RESULT = new BinaryExpr(lhs, BinaryOperator.DIVIDE, rhs);
+		 :}
+	   | expr:lhs PLUS expr:rhs
+		 {:
+			 RESULT = new BinaryExpr(lhs, BinaryOperator.PLUS, rhs);
+		 :}
+	   | expr:lhs MINUS expr:rhs
+		 {:
+			 RESULT = new BinaryExpr(lhs, BinaryOperator.MINUS, rhs);
+		 :}
+	   | expr:lhs LESS expr:rhs
+		 {:
+			 RESULT = new CompareExpr(lhs, Comparer.LESS, rhs);
+		 :}
+	   | expr:lhs GREATER expr:rhs
+		 {:
+			 RESULT = new CompareExpr(lhs, Comparer.GREATER, rhs);
+		 :}
+	   | expr:lhs LESS_EQ expr:rhs
+		 {:
+			 RESULT = new CompareExpr(lhs, Comparer.LESS_EQ, rhs);
+		 :}
+	   | expr:lhs GREATER_EQ expr:rhs
+		 {:
+			 RESULT = new CompareExpr(lhs, Comparer.GREATER_EQ, rhs);
+		 :}
+	   | expr:lhs EQ expr:rhs
+		 {:
+			 RESULT = new CompareExpr(lhs, Comparer.EQ, rhs);
+		 :}
+	   | expr:lhs NOT_EQ expr:rhs
+		 {:
+			 RESULT = new CompareExpr(lhs, Comparer.NOT_EQ, rhs);
+		 :}
+	   | call:c
+		 {:
+			 RESULT = new CallExpr(c);
+		 :}
+	   | INT_NUM:n
+		 {:
+			 RESULT = new IntExpr(n);
+		 :}
+	   | FLOAT_NUM:n
+		 {:
+			 RESULT = new FloatExpr(n);
+		 :}
+	   | ID:i
+		 {:
+			 RESULT = new IdExpr(i);
+		 :}
+	   | ID:i LSQBRACKET expr:e RSQBRACKET
+		 {:
+			 RESULT = new IdExpr(i, e);
+		 :}
+	   | LPAREN expr:e RPAREN
+		 {:
+			 RESULT = new ParenExpr(e);
+		 :}
+	   ;
+
+argList ::= expr:e
+			{:
+				RESULT = new ArgList(e);
+			:}
+		  | argList:al COMMA expr:e
+			{:
+				al.add(e);
+				RESULT = al;
+			:}
+		  ;
